@@ -1,0 +1,43 @@
+[project]
+name = "smt"
+version = "0.1.0"
+description = "A structural engineering tool for calculating punching shear capacity to CSA A23.3-19."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "pandas>=2.1.0",
+    "pytest>=9.0.2",
+    "shapely>=2.0.0",
+]
+
+# Grouping optional dependencies keeps the core package lightweight
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+]
+notebook = [
+    "jupyterlab>=4.0.0",
+    "ipywidgets>=8.1.0",
+]
+
+# --- Tool Configurations ---
+
+[tool.ruff]
+# Standardize formatting to keep the codebase clean before hitting the Beta phase
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"] # Flake8 and Isort rules (keeps imports organized)
+
+[tool.pytest.ini_options]
+# Tells pytest exactly where to look for your hand-calc verification Tests
+minversion = "8.0"
+addopts = "-ra -v"
+testpaths = [
+    "Tests",
+]
