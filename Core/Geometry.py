@@ -171,11 +171,12 @@ def generate_octagonal_outer_perimeter(x_c: float, y_c: float, c1: float, c2: fl
     dist_bottom = y_min_col - slab_ymin
     dist_top = slab_ymax - y_max_col
     
-    # CSA Rule: Is the edge within 5d?
-    active_left = dist_left <= 5 * d
-    active_right = dist_right <= 5 * d
-    active_bottom = dist_bottom <= 5 * d
-    active_top = dist_top <= 5 * d
+    # Active edges: if the edge is within 5d it is always active.
+    # Otherwise, it becomes active if the rail length + d/2 pushes the perimeter past the edge.
+    active_left = (dist_left <= 5 * d) or (dist_left <= rail_length + d/2)
+    active_right = (dist_right <= 5 * d) or (dist_right <= rail_length + d/2)
+    active_bottom = (dist_bottom <= 5 * d) or (dist_bottom <= rail_length + d/2)
+    active_top = (dist_top <= 5 * d) or (dist_top <= rail_length + d/2)
     
     # Base distances (without edge interference)
     dist_x_base = (c1 / 2) + rail_length + (d / 2)

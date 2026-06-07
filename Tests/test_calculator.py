@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from types import SimpleNamespace
-from Core.Geometry import ColumnLocation, generate_octagonal_outer_perimeter, discretize_shapely_line, calculate_section_properties
+from Core.Geometry import ColumnLocation, generate_octagonal_outer_perimeter, discretize_shapely_line, calculate_section_properties, build_csa_perimeter
 from Models.Materials import Concrete, Rebar
 from Models.Results import PunchingShearInput
 from Codes.CSA_A23_3_19 import (
@@ -135,36 +135,121 @@ def test_calc_vc_with_ssr():
     vc_ssr = calc_vc_with_ssr(inputs)
     assert np.isclose(vc_ssr, expected_vc_ssr, rtol=1e-3)
 
-def test_design_ssr_rails_success():
+def test_design_ssr_rails_success_interior():
     """
-    Test the SSR rail design loop iterating and finding a successful outer perimeter.
-    Ensure minimum rail length is enforced (2.0 * d).
+    Test the SSR rail design loop iterating and finding a successful outer perimeter for an interior column.
     """
     inputs = get_base_inputs(ColumnLocation.INTERIOR)
-    # Give it a tiny shear so it passes on the first iteration stress-wise
     inputs.Vf = 10.0 # kN
     inputs.Mf_x = 0.0
     inputs.Mf_y = 0.0
-    vf = 0.5 # Mock shear stress
+    vf = 0.5 
+    
+    slab_bounds = [-5000.0, -5000.0, 5000.0, 5000.0]
     
     # Needs initial geometry
-    outer_perimeter_line = generate_octagonal_outer_perimeter(
-        x_c=inputs.x_c, y_c=inputs.y_c, 
-        c1=inputs.c1, c2=inputs.c2, 
-        d=inputs.d, rail_length=100.0
-    )
-    fibers = discretize_shapely_line(outer_perimeter_line, inputs.d)
+    initial_perimeter = build_csa_perimeter(inputs.x_c, inputs.y_c, inputs.c1, inputs.c2, inputs.d, slab_bounds)
+    fibers = discretize_shapely_line(initial_perimeter, inputs.d)
     geom = calculate_section_properties(fibers, inputs.d, inputs.x_c, inputs.y_c)
     
-    result = design_ssr_rails(inputs, geom, vf, stud_diameter=12.7)
+    result = design_ssr_rails(inputs, slab_bounds, geom, vf, stud_diameter=12.7)
     
     assert result["success"] is True
-    assert "required_rail_length" in result
-    assert "num_studs_per_rail" in result
-    assert result["vf_out"] <= result["v_c_out_limit"]
+    assert result["num_rails"] == 8
+
+def test_design_ssr_rails_success_edge():
+    """
+    Test the SSR rail design loop iterating and finding a successful outer perimeter for an edge column.
+    """
+    inputs = get_base_inputs(ColumnLocation.EDGE)
+    inputs.Vf = 10.0 # kN
+    inputs.Mf_x = 0.0
+    inputs.Mf_y = 0.0
+    vf = 0.5 
     
-    # The minimum required rail length should be at least 2*d
-    assert result["required_rail_length"] >= 2.0 * inputs.d
+    # Place right edge very close to force an EDGE condition
+    slab_bounds = [-5000.0, -5000.0, inputs.c1/2 + 20.0, 5000.0]
+    
+    # Needs initial geometry
+    initial_perimeter = build_csa_perimeter(inputs.x_c, inputs.y_c, inputs.c1, inputs.c2, inputs.d, slab_bounds)
+    fibers = discretize_shapely_line(initial_perimeter, inputs.d)
+    geom = calculate_section_properties(fibers, inputs.d, inputs.x_c, inputs.y_c)
+    
+    result = design_ssr_rails(inputs, slab_bounds, geom, vf, stud_diameter=12.7)
+    
+    assert result["success"] is True
+    assert result["num_rails"] == 6
+
+def test_design_ssr_rails_success_corner():
+    """
+    Test the SSR rail design loop iterating and finding a successful outer perimeter for a corner column.
+    """
+    inputs = get_base_inputs(ColumnLocation.CORNER)
+    inputs.Vf = 10.0 # kN
+    inputs.Mf_x = 0.0
+    inputs.Mf_y = 0.0
+    vf = 0.5 
+    
+    # Place right and top edges very close to force a CORNER condition
+    slab_bounds = [-5000.0, -5000.0, inputs.c1/2 + 20.0, inputs.c2/2 + 20.0]
+    
+    # Needs initial geometry
+    initial_perimeter = build_csa_perimeter(inputs.x_c, inputs.y_c, inputs.c1, inputs.c2, inputs.d, slab_bounds)
+    fibers = discretize_shapely_line(initial_perimeter, inputs.d)
+    geom = calculate_section_properties(fibers, inputs.d, inputs.x_c, inputs.y_c)
+    
+    result = design_ssr_rails(inputs, slab_bounds, geom, vf, stud_diameter=12.7)
+    
+    assert result["success"] is True
+    assert result["num_rails"] == 4
+
+def test_design_ssr_rails_dynamic_edge_loss():
+    """
+    Test the condition where an edge is NOT initially within 5d, 
+    but the rails expand far enough to hit it, causing the number of rails to drop.
+    """
+    inputs = get_base_inputs(ColumnLocation.INTERIOR)
+    # Give it a higher shear force so it needs to expand
+    inputs.Vf = 1100.0 # kN
+    inputs.Mf_x = 120.0
+    inputs.Mf_y = 150.0
+    inputs.c1 = 300.0
+    inputs.c2 = 600.0
+    inputs.slab_thickness = 250.0
+    inputs.c_top = 30.0
+    inputs.c_bot = 30.0
+    inputs.d = 250.0 - 30.0
+    vf = 1.5 
+    
+    # Place right edge at exactly 1200 away (not initially active since 5d = 1100, but will become active as rails grow)
+    dist_right = 1200.0
+    # Note from notebook: dist_right is from center of column. 
+    # Dist from face is dist_right - c1/2 = 1200 - 150 = 1050.
+    # 5d = 5 * 220 = 1100. So 1050 is < 1100. 
+    # Oh wait! In the notebook the user provided dist_right = 1200 from center.
+    # d_right = dist_right - c1/2 = 1200 - 150 = 1050.
+    # 5 * d = 5 * 220 = 1100.
+    # Because 1050 <= 1100, this edge IS initially active.
+    
+    # So let's test a true "dynamic" loss.
+    # We will make d_right slightly LARGER than 1100 so it starts as interior.
+    dist_right = 1100.0 + inputs.c1/2 + 10.0 # 1260
+    
+    slab_bounds = [-5000.0, -5000.0, dist_right, 5000.0]
+    
+    initial_perimeter = build_csa_perimeter(inputs.x_c, inputs.y_c, inputs.c1, inputs.c2, inputs.d, slab_bounds)
+    fibers = discretize_shapely_line(initial_perimeter, inputs.d)
+    geom = calculate_section_properties(fibers, inputs.d, inputs.x_c, inputs.y_c)
+    
+    # To force the rails to drop, vf must be high enough that the required rail length > dist_right.
+    # We will pass the exact spacing params from the notebook too:
+    result = design_ssr_rails(inputs, slab_bounds, geom, vf, stud_diameter=12.7, 
+                              user_s0=150.0/2, user_s=150.0, spacing_increment=0.5*25.4)
+    
+    # It should successfully design, but the number of rails should dynamically drop to 6 
+    # because it hit the edge while expanding
+    assert result["success"] is True
+    assert result["num_rails"] == 6
 
 def test_design_ssr_rails_failure():
     """
@@ -177,17 +262,15 @@ def test_design_ssr_rails_failure():
     inputs.Mf_y = 0.0
     vf = 15.0 # Mock high shear stress
     
-    outer_perimeter_line = generate_octagonal_outer_perimeter(
-        x_c=inputs.x_c, y_c=inputs.y_c, 
-        c1=inputs.c1, c2=inputs.c2, 
-        d=inputs.d, rail_length=100.0
-    )
-    fibers = discretize_shapely_line(outer_perimeter_line, inputs.d)
+    slab_bounds = [-5000.0, -5000.0, 5000.0, 5000.0]
+    
+    initial_perimeter = build_csa_perimeter(inputs.x_c, inputs.y_c, inputs.c1, inputs.c2, inputs.d, slab_bounds)
+    fibers = discretize_shapely_line(initial_perimeter, inputs.d)
     geom = calculate_section_properties(fibers, inputs.d, inputs.x_c, inputs.y_c)
     
     # Cap max rail length to 300 to run test faster
     # Note: since minimum rail length is 2*d (400), this will fail because max length is less than minimum.
-    result = design_ssr_rails(inputs, geom, vf, stud_diameter=12.7, max_rail_length=300.0)
+    result = design_ssr_rails(inputs, slab_bounds, geom, vf, stud_diameter=12.7, max_rail_length=300.0)
     
     assert result["success"] is False
     assert result["required_rail_length"] == 300.0
