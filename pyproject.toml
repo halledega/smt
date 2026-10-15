@@ -1,8 +1,27 @@
 [project]
 name = "smt"
 version = "0.1.0"
-description = "A structural engineering tool for calculating punching shear capacity to CSA A23.3-19."
+description = "A structural engineering tool for calculating punching shear capacity and designing Stud Shear Reinforcement (SSR) to CSA A23.3-19."
 readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Michael Halliday", email = "mhalliday82@gmail.com" }
+]
+keywords = [
+    "structural-engineering",
+    "punching-shear",
+    "csa-a23-3",
+    "concrete-design",
+    "civil-engineering",
+    "stud-shear-reinforcement",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.12"
 dependencies = [
     "ipykernel>=7.2.0",
